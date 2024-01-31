@@ -1,0 +1,67 @@
+---
+- name: Install and Configure MariaDB on CentOS 9
+  hosts: db01
+  become: true
+
+  vars:
+    database_pass: "admin123"
+
+  tasks:
+    - name: Update and install necessary packages
+      dnf:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - epel-release
+        - git
+        - zip
+        - unzip
+        - mariadb-server
+
+    - name: Start and enable MariaDB service
+      systemd:
+        name: mariadb
+        state: started
+        enabled: yes
+
+    - name: Clone vprofile-project repository
+      git:
+        repo: https://github.com/hkhcoder/vprofile-project.git
+        dest: /tmp/vprofile-project
+        version: main
+
+    - name: Set MariaDB root password
+      command: >
+        mysqladmin -u root password "{{ database_pass }}"
+      ignore_errors: yes
+
+    - name: Secure MariaDB installation
+      command: >
+        mysql_secure_installation
+        && echo "DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');" | mysql -u root -p"{{ database_pass }}"
+        && echo "DELETE FROM mysql.user WHERE User='';" | mysql -u root -p"{{ database_pass }}"
+        && echo "DELETE FROM mysql.db WHERE Db='test' OR Db='test_%';" | mysql -u root -p"{{ database_pass }}"
+        && echo "FLUSH PRIVILEGES;" | mysql -u root -p"{{ database_pass }}"
+        && echo "CREATE DATABASE accounts;" | mysql -u root -p"{{ database_pass }}"
+        && echo "GRANT ALL PRIVILEGES ON accounts.* TO 'admin'@'localhost' IDENTIFIED BY 'admin123';" | mysql -u root -p"{{ database_pass }}"
+        && echo "GRANT ALL PRIVILEGES ON accounts.* TO 'admin'@'%' IDENTIFIED BY 'admin123';" | mysql -u root -p"{{ database_pass }}"
+        && mysql -u root -p"{{ database_pass }}" accounts < /tmp/vprofile-project/src/main/resources/db_backup.sql
+        && echo "FLUSH PRIVILEGES;" | mysql -u root -p"{{ database_pass }}"
+      ignore_errors: yes
+
+    - name: Restart MariaDB service
+      systemd:
+        name: mariadb
+        state: restarted
+
+    - name: Configure firewall for MariaDB
+      firewalld:
+        port: 3306/tcp
+        zone: public
+        state: enabled
+        permanent: yes
+        immediate: yes
+
+    - name: Reload firewall
+      command: firewall-cmd --reload
+

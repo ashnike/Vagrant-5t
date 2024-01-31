@@ -1,0 +1,71 @@
+---
+- hosts: rmq01
+  become: yes
+
+  tasks:
+    - name: Install required packages
+      zypper:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - epel-release
+        - wget
+
+    - name: Update the system
+      zypper:
+        name: "*"
+        state: latest
+
+    - name: Install RabbitMQ repository
+      zypper_repository:
+        name: centos-rabbitmq-38
+        url: https://packagecloud.io/rabbitmq/erlang/packages/el/7
+        gpgcheck: no
+
+    - name: Install RabbitMQ server
+      zypper:
+        name: rabbitmq-server
+        state: present
+
+    - name: Enable and start RabbitMQ service
+      systemd:
+        name: rabbitmq-server
+        enabled: yes
+        state: started
+
+    - name: Open port 5672 in the firewall
+      firewalld:
+        service: "{{ item }}"
+        permanent: true
+        state: enabled
+        immediate: yes
+      loop:
+        - rabbitmq
+
+    - name: Create RabbitMQ config file
+      copy:
+        content: |
+          [{rabbit, [{loopback_users, []}]}].
+        dest: /etc/rabbitmq/rabbitmq.config
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Add RabbitMQ user
+      command: >
+        rabbitmqctl add_user test test
+
+    - name: Set RabbitMQ user tags
+      command: >
+        rabbitmqctl set_user_tags test administrator
+
+    - name: Restart RabbitMQ service
+      systemd:
+        name: rabbitmq-server
+        state: restarted
+
+    - name: Show RabbitMQ service status
+      systemd:
+        name: rabbitmq-server
+        state: status
+

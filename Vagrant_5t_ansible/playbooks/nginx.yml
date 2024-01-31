@@ -1,0 +1,49 @@
+---
+- name: Provision Nginx
+  hosts: web01  # Assuming "web01" is the target host defined in your inventory
+  become: true  # To run tasks with elevated privileges
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+
+    - name: Configure Nginx virtual host
+      blockinfile:
+        path: /etc/nginx/sites-available/vproapp
+        block: |
+          upstream vproapp {
+            server app01:8080;
+          }
+
+          server {
+            listen 80;
+
+            location / {
+              proxy_pass http://vproapp;
+            }
+          }
+
+    - name: Remove default Nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Create symlink to enable the new site
+      file:
+        src: /etc/nginx/sites-available/vproapp
+        dest: /etc/nginx/sites-enabled/vproapp
+        state: link
+
+    - name: Start Nginx service
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+        daemon_reload: yes
+

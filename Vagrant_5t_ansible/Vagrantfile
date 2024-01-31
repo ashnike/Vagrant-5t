@@ -1,0 +1,66 @@
+Vagrant.configure("2") do |config|
+  # General configuration for all virtual machines
+  config.vm.provider :virtualbox do |vb|
+    vb.memory = "1024"
+    vb.cpus = 1
+  end
+
+  # Database VM (often provisioned first)
+  config.vm.define "db01" do |db01|
+    db01.vm.box = "generic/centos8"
+    db01.vm.hostname = "db01"
+    db01.vm.network "private_network", ip: "192.168.60.15"
+    db01.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/database.yml"
+      ansible.inventory_path = "inventory/db/hosts.ini"
+    end
+  end
+
+  # Memcached VM
+  config.vm.define "mc01" do |mc01|
+    mc01.vm.box = "generic/centos8"
+    mc01.vm.hostname = "mc01"
+    mc01.vm.network "private_network", ip: "192.168.60.14"
+    mc01.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/memcache.yml"
+      ansible.inventory_path = "inventory/mc/hosts.ini"
+    end
+  end
+
+  # RabbitMQ VM
+  config.vm.define "rmq01" do |rmq01|
+    rmq01.vm.box = "generic/centos8"
+    rmq01.vm.hostname = "rmq01"
+    rmq01.vm.network "private_network", ip: "192.168.60.13"
+    rmq01.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/rabbitmq.yml"
+      ansible.inventory_path = "inventory/rmq/hosts.ini"
+    end
+  end
+
+  # Tomcat app server VM
+  config.vm.define "app01" do |app01|
+    app01.vm.box = "generic/centos8"
+    app01.vm.hostname = "app01"
+    app01.vm.network "private_network", ip: "192.168.60.12"
+    app01.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/tomcat.yml"
+      ansible.inventory_path = "inventory/app/hosts.ini"
+    end
+  end
+
+  # Nginx web server VM (often provisioned last)
+  config.vm.define "web01" do |web01|
+    web01.vm.box = "generic/centos8"
+    web01.vm.hostname = "web01"
+    web01.vm.network "private_network", ip: "192.168.60.11"
+    web01.vm.provision "ansible" do |ansible|
+      ansible.playbook = "playbooks/nginx.yml"
+      ansible.inventory_path = "inventory/web/hosts.ini"
+    end
+  end
+
+  # Enable SSH agent forwarding for all VMs
+  config.ssh.forward_agent = true
+end
+

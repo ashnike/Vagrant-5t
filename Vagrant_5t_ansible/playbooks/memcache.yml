@@ -1,0 +1,57 @@
+---
+- name: Install and Configure Memcached on CentOS 9
+  hosts: mc01
+  become: true
+
+  tasks:
+    - name: Install EPEL repository
+      dnf:
+        name: epel-release
+        state: present
+
+    - name: Install Memcached
+      dnf:
+        name: memcached
+        state: present
+
+    - name: Start and enable Memcached service
+      systemd:
+        name: memcached
+        state: started
+        enabled: yes
+
+    - name: Show Memcached service status
+      systemd:
+        name: memcached
+        state: status
+
+    - name: Modify Memcached configuration
+      lineinfile:
+        path: /etc/sysconfig/memcached
+        line: 'OPTIONS="-l 0.0.0.0"'
+
+    - name: Restart Memcached service
+      systemd:
+        name: memcached
+        state: restarted
+
+    - name: Open port 11211 in the firewall
+      firewalld:
+        port: 11211/tcp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+    - name: Open port 11111/udp in the firewall
+      firewalld:
+        port: 11111/udp
+        permanent: true
+        state: enabled
+        immediate: yes
+
+    - name: Reload firewall
+      command: firewall-cmd --reload
+
+    - name: Run Memcached in the background
+      command: memcached -p 11211 -U 11111 -u memcached -d
+

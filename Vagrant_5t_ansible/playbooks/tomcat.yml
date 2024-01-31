@@ -1,0 +1,131 @@
+---
+- name: Install and Configure Apache Tomcat on Fedora 37
+  hosts: app01
+  become: yes
+
+  tasks:
+    - name: Install Java and required packages
+      dnf:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - java-11-openjdk
+        - java-11-openjdk-devel
+        - git
+        - maven
+        - wget
+
+    - name: Download Apache Tomcat
+      get_url:
+        url: "https://archive.apache.org/dist/tomcat/tomcat-9/v9.0.75/bin/apache-tomcat-9.0.75.tar.gz"
+        dest: "/tmp/tomcatbin.tar.gz"
+
+    - name: Extract Apache Tomcat
+      command: "tar xzvf /tmp/tomcatbin.tar.gz -C /tmp/"
+      args:
+        creates: "/tmp/apache-tomcat-9.0.75/"
+
+    - name: Create tomcat user
+      user:
+        name: tomcat
+        shell: /sbin/nologin
+
+    - name: Copy Tomcat files to /usr/local/tomcat
+      command: "rsync -avzh /tmp/apache-tomcat-9.0.75/ /usr/local/tomcat/"
+      args:
+        creates: "/usr/local/tomcat/bin/catalina.sh"
+
+    - name: Set ownership for /usr/local/tomcat
+      command: "chown -R tomcat:tomcat /usr/local/tomcat"
+
+    - name: Remove existing Tomcat service file
+      file:
+        path: "/etc/systemd/system/tomcat.service"
+        state: absent
+
+    - name: Create Tomcat service file
+      copy:
+        content: |
+          [Unit]
+          Description=Tomcat
+          After=network.target
+
+          [Service]
+          User=tomcat
+          Group=tomcat
+          WorkingDirectory=/usr/local/tomcat
+          Environment=JAVA_HOME=/usr/lib/jvm/jre
+          Environment=CATALINA_PID=/var/tomcat/%i/run/tomcat.pid
+          Environment=CATALINA_HOME=/usr/local/tomcat
+          Environment=CATALINE_BASE=/usr/local/tomcat
+
+          ExecStart=/usr/local/tomcat/bin/catalina.sh run
+          ExecStop=/usr/local/tomcat/bin/shutdown.sh
+
+          RestartSec=10
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: "/etc/systemd/system/tomcat.service"
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Start and enable Tomcat service
+      systemd:
+        name: tomcat
+        state: started
+        enabled: yes
+
+    - name: Clone vprofile-project repository
+      git:
+        repo: https://github.com/hkhcoder/vprofile-project.git
+        dest: "{{ ansible_env.HOME }}/vprofile-project"
+        version: main
+
+    - name: Build vprofile-project with Maven
+      command: "mvn install"
+      args:
+        chdir: "{{ ansible_env.HOME }}/vprofile-project"
+
+    - name: Stop Tomcat service
+      systemd:
+        name: tomcat
+        state: stopped
+
+    - name: Wait for Tomcat to stop
+      wait_for:
+        timeout: 20
+
+    - name: Remove existing ROOT webapp
+      command: "rm -rf /usr/local/tomcat/webapps/ROOT*"
+
+    - name: Copy vprofile-v2.war to Tomcat webapps
+      command: "cp {{ ansible_env.HOME }}/vprofile-project/target/vprofile-v2.war /usr/local/tomcat/webapps/ROOT.war"
+
+    - name: Start Tomcat service
+      systemd:
+        name: tomcat
+        state: started
+
+    - name: Wait for Tomcat to start
+      wait_for:
+        timeout: 20
+
+    - name: Stop firewalld
+      systemd:
+        name: firewalld
+        state: stopped
+
+    - name: Disable firewalld
+      systemd:
+        name: firewalld
+        enabled: no
+
+    - name: Restart Tomcat service
+      systemd:
+        name: tomcat
+        state: restarted
+
